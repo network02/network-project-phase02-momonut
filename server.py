@@ -10,8 +10,8 @@ ADMIN = 1
 users = []
 online_users = []
 class User:
-    def __init__(self, username):
-        self.set_username(username)
+    def __init__(self):
+        pass
 
     def set_username(self, username):
         self.username = username
@@ -30,74 +30,98 @@ class User:
                 return True
 
         return False
-
         
             
-def handle_user(request):
-    pass
-def handle_pass(request):
-    pass
+def handle_user(request, user):
+    request_parts = request.strip().split()
+    username = request_parts[1]
+    user.set_username(username)
+    response = ""
+    return response
+
+def handle_pass(request, user):
+    request_parts = request.strip().split()
+    password = request_parts[1]
+    user.set_password(password)
+    login = user.authenticate()
+    if login:
+        response = ""
+    else:
+        response = ""
+    return response
+
 def handle_list(request):
-    pass
+    command = "ls -l"
+    response = subprocess.run(shelx.split(command))
+    return response
+
 def handle_retr(request):
     pass
+
 def handle_stor(request):
     pass
+
 def handle_mkd(request):
-    pass
+    request_parts = request.strip().split()
+    dir = request_parts[1]
+    command = 'mkdir ' + dir
+    response = subprocess.run(shlex.split(command))
+    return response 
 
 def handle_rmd(request):  
     request_parts = request.strip().split()
     dir = request_parts[1]
     command = 'rmdir ' + dir
-    s = subprocess.run(shlex.split(command))
-    return s
+    response = subprocess.run(shlex.split(command))
+    return response 
 
 def handle_pwd(request):
     command = 'pwd'
-    s = subprocess.run(shlex.split(command))
-    return s
+    response = subprocess.run(shlex.split(command))
+    return response 
 
 def handle_cwd(request):
     request_parts = request.strip().split()
     dir = request_parts[1]
     command = 'cd ' + dir
-    s = subprocess.run(shlex.split(command))
-    return s
+    response = subprocess.run(shlex.split(command))
+    return response 
 
 def handle_dele(request):
     request_parts = request.strip().split()
     name = request_parts[1]
     command = 'rm -f' + name
-    s = subprocess.run(shlex.split(command))
-    return s
+    response = subprocess.run(shlex.split(command))
+    return response 
 
 def handle_cdup(request):
     command = 'cd ..'
-    s = subprocess.run(shlex.split(command))
-    return s
+    response = subprocess.run(shlex.split(command))
+    return response 
 
 def handle_quit(request):
-    s = "400"
-    return s
+    response = "400"
+    return response 
 
 
 def main():
     host = "localhost"
     port = 8080
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, port))
     server_socket.listen(1)
     print(f"Server is listening on http://{host}:{port}")
 
+    user = User()
     while True:
         client_socket, client_address = server_socket.accept()
         request = client_socket.recv(1024).decode()
 
         if "USER" in request.to_upper():
-            response = handle_user(request)
+            response = handle_user(request, user)
         elif "PASS" in request.to_upper():
-            response = handle_pass(request)
+            response = handle_pass(request, user)
         elif "LIST" in request.to_upper():
             response = handle_list(request)
         elif "RETR" in request.to_upper():
@@ -124,12 +148,12 @@ def main():
         client_socket.sendall(response.encode())
         client_socket.close()
 
+
 if __name__ == "__main__":
     main()
         
         
 #USER string
-
 #PASS string
 #LIST null | string
 #RETR string
