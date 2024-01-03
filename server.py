@@ -22,6 +22,12 @@ class User:
     def set_privilage(self, privilage):
         self.privilage = privilage
 
+    def add_user(self, username, password, privilage):
+        self.set_username(username)
+        self.set_password(password)
+        self.set_privilage(privilage)
+        users.append(self)
+
     def authenticate(self):
         for user in users:
             if self.username == user.username and self.password == user.password:
@@ -30,13 +36,22 @@ class User:
                 return True
 
         return False
+
+    def quit(self):
+        online_users.remove(self)
         
-            
+
+def add_fake_users():
+    user = User()
+    user.add_user('mohammad', 1234, ADMIN)
+    user = User()
+    user.add_user('pouya', 123456, ORDINARY) 
+
 def handle_user(request, user):
     request_parts = request.strip().split()
     username = request_parts[1]
     user.set_username(username)
-    response = ""
+    response = 'Username Set'
     return response
 
 def handle_pass(request, user):
@@ -45,26 +60,48 @@ def handle_pass(request, user):
     user.set_password(password)
     login = user.authenticate()
     if login:
-        response = ""
+        response = 'Login Successfull'
     else:
-        response = ""
+        response = 'Login Failed'
     return response
 
 def handle_list(request):
-    command = "ls -l"
+    request_parts = request.strip().split()
+    if len(request_parts) > 1: 
+        path = request_parts[1]
+    else:
+        path = ''
+    command = f'ls {path} -l'
     response = subprocess.run(shelx.split(command))
     return response
 
-def handle_retr(request):
-    pass
+def handle_retr(request, client_host):
+    request_parts = request.strip().split()
+    path = subprocess.run(shelx.split('pwd'))
+    file_name = path + equest_parts[1] 
+    port = 20 
 
-def handle_stor(request):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((client_host, port))
+
+    #TODO try exception
+    with open(file_name, 'rb') as f:
+        data = f.read(1024)
+        while data:
+            s.send(data)
+            data = f.read(1024)
+
+    s.close()
+    rosponse = 'File Sent'
+    return response
+
+def handle_stor(request, client):
     pass
 
 def handle_mkd(request):
     request_parts = request.strip().split()
-    dir = request_parts[1]
-    command = 'mkdir ' + dir
+    path = request_parts[1]
+    command = 'mkdir ' + path 
     response = subprocess.run(shlex.split(command))
     return response 
 
@@ -99,23 +136,26 @@ def handle_cdup(request):
     response = subprocess.run(shlex.split(command))
     return response 
 
-def handle_quit(request):
+def handle_quit(request, user):
+    user.quit()
     response = "400"
     return response 
 
 
 def main():
     host = "localhost"
-    port = 8080
+    port = 21 
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, port))
     server_socket.listen(1)
     print(f"Server is listening on http://{host}:{port}")
 
+    add_fake_users()
     user = User()
     while True:
         client_socket, client_address = server_socket.accept()
+        client_host = socket.gethostbyaddr(client_address[0])[0]
         request = client_socket.recv(1024).decode()
 
         if "USER" in request.to_upper():
@@ -123,9 +163,9 @@ def main():
         elif "PASS" in request.to_upper():
             response = handle_pass(request, user)
         elif "LIST" in request.to_upper():
-            response = handle_list(request)
+            response = handle_list(request, client_host)
         elif "RETR" in request.to_upper():
-            response = handle_retr(request)
+            response = handle_retr(request, client_host)
         elif "STOR" in request.to_upper():
             response = handle_stor(request)
         elif "MKD" in request.to_upper():
