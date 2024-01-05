@@ -5,15 +5,16 @@ import os
 from time import sleep
 #commands
 
-BAD_REQUEST = '400 Bad Request'
-ORDINARY = 3
-PRIVILAGED = 2
+ORDINARY = 2
 ADMIN = 1
+BAD_REQUEST = '400 Bad Request'
 DEFAULT_DIR = f'/home/{os.getlogin()}/ftp'
+LOG = f'/home/{os.getlogin()}/ftp/report.log'
 
 host = "localhost"
 ctrl_port = 8021 
-data_port = 8020
+data_port = 8020 
+
 users = []
 online_users = []
 class User:
@@ -33,8 +34,17 @@ class User:
     def set_current_dir(self, directory):
         self.current_dir = directory
 
+    def get_username(self):
+        return self.username
+
+    def get_password(self):
+        return self.password
+
     def get_current_dir(self):
         return self.current_dir
+
+    def get_privilage(self):
+        return self.privilage
 
     def add_user(self, username, password, privilage):
         self.set_username(username)
@@ -61,7 +71,7 @@ def add_fake_users():
     user = User()
     user.add_user('mohammad', '1234', ADMIN)
     user = User()
-    user.add_user('p', '1', ORDINARY) 
+    user.add_user('p', '1', ADMIN) 
 
 def handle_user(request, user):
     request_parts = request.strip().split()
@@ -97,6 +107,9 @@ def handle_list(request, directory):
         path = ''
     command = f'ls {path} -ltrh'
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
+    if 'total' not in response:
+        command = f'cat {path}'
+        response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response
 
 def handle_retr(request, client_host, directory):
@@ -108,10 +121,9 @@ def handle_retr(request, client_host, directory):
 
     #TODO try exception
     with open(file_name, 'rb') as f:
-        data = f.read(1024)
         while data:
-            s.send(data)
             data = f.read(1024)
+            s.send(data.encode())
 
     s.close()
     response = 'File Sent'
@@ -163,8 +175,11 @@ def handle_cwd(request, user, directory):
     try:
         os.chdir(path)
         path = os.getcwd()
-        user.set_current_dir(path)
-        response = f'You are in {path}' 
+        if 'ftp' not in path:
+            response = BAD_REQUEST
+        else:
+            user.set_current_dir(path)
+            response = f'You are in {path}' 
     except:
         response = 'Directory Not Found'
 
@@ -186,12 +201,20 @@ def handle_cdup(user, directory):
 
 def handle_quit(user):
     user.quit()
-    response = ""
+    response = "Goodnight!"
     return response 
+
+def handle_report(privilage):
+    if privilage == ADMIN:
+        command = 'cat ' + LOG 
+        response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
+    else:
+        response = "Access Denied"
+
+    return response
 
 
 def main():
-
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, ctrl_port))
     server_socket.listen(1)
@@ -205,11 +228,18 @@ def main():
         request = client_socket.recv(1024).decode()
 
         if 'USER' in request.upper():
+            with open(LOG, 'a') as f:
+                f.write(f'User: Unknown\nRequest: {request}\n')
             response = handle_user(request, user)
         elif 'PASS' in request.upper():
+            with open(LOG, 'a') as f:
+                f.write(f'User: Unknown\nRequest: {request}\n')
             response = handle_pass(request, user)
 
         elif user.authorized:
+            with open(LOG, 'a') as f:
+                f.write(f'User: {user.get_username()}\nRequest: {request}\n')
+
             current_dir = user.get_current_dir()
             if any(x in request.upper() for x in ['LIST', 'LS']):
                 response = handle_list(request, current_dir)
@@ -231,10 +261,16 @@ def main():
                 response = handle_dele(request, current_dir)
             elif any(x in request.upper() for x in ['QUIT']):
                 response = handle_quit(user)
+            elif 'REPORT' in request.upper(): 
+                response = handle_report(user.get_privilage())
             else:
                 response = BAD_REQUEST
         else:
             response = "Login First!"
+
+        with open(LOG, 'a') as f:
+            f.write(f'Response: {response}\n')
+            f.write('--------------------------------\n')
 
         client_socket.sendall(response.encode())
         client_socket.close()
@@ -252,9 +288,9 @@ if __name__ == "__main__":
 #CWD string
 #DELE string
 #CDUP 
-
 #LIST null | string
+#QUIT
+
 #RETR string
 #STOR string
-#QUIT
 # priority

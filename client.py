@@ -5,7 +5,7 @@ import shlex
 host = ""
 server = "localhost"
 ctrl_port = 8021
-data_port = 8020
+data_port = 8020 
 
 def send(request):
     try:
@@ -22,9 +22,6 @@ def send(request):
     return response
     
 def main():
-
-
-
     while True:
         request = input().strip()
         response = send(request)
@@ -37,7 +34,7 @@ def main():
             client_data = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             client_data.bind((host, data_port))
             client_data.listen(1)
-            print(f"listening on http://{host}:{ctrl_port}")
+            print(f"listening on ftp://{host}:{data_port}")
             server_socket, server_address = client_data.accept()
             print(f"port {data_port} opened")
             file_name = request.strip().split()[1].split("/")[-1]
@@ -60,11 +57,14 @@ def main():
 
         elif "STOR" in request.upper():
             pass
+        
+        elif response == "Goodnight!":
+            print(response)
+            break
 
         
         print(response)
     
-
 
 
 if __name__ == "__main__":
