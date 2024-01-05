@@ -2,14 +2,18 @@ import socket
 import subprocess
 import shlex
 import os
+from time import sleep
 #commands
 
 BAD_REQUEST = '400 Bad Request'
 ORDINARY = 3
 PRIVILAGED = 2
 ADMIN = 1
-DEFAULT_DIR = '~/ftp'
+DEFAULT_DIR = f'/home/{os.getlogin()}/ftp'
 
+host = "localhost"
+ctrl_port = 8021 
+data_port = 8020
 users = []
 online_users = []
 class User:
@@ -27,7 +31,7 @@ class User:
         self.privilage = privilage
 
     def set_current_dir(self, directory):
-        self.current_dir = dircetory
+        self.current_dir = directory
 
     def get_current_dir(self):
         return self.current_dir
@@ -95,15 +99,12 @@ def handle_list(request, directory):
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response
 
-def handle_retr(request, client_host):
+def handle_retr(request, client_host, directory):
     request_parts = request.strip().split()
-    command = 'pwd'
-    path = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    file_name = path + request_parts[1] 
-    port = 8020 
+    file_name = directory + '/' + request_parts[1] 
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((client_host, port))
+    s.connect((client_host, data_port))
 
     #TODO try exception
     with open(file_name, 'rb') as f:
@@ -140,15 +141,15 @@ def handle_rmd(request, directory):
 
     command = 'rmdir ' + path
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'Directory cheeze "{path}" created' if not response else response
+    response = f'Directory cheeze "{path}" removed' if not response else response
     return response 
 
-def handle_pwd(request, directory):
+def handle_pwd(directory):
     command = 'pwd'
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response 
 
-def handle_cwd(request, user, dircetory):
+def handle_cwd(request, user, directory):
     request_parts = request.strip().split()
     try:
         path = request_parts[1]
@@ -176,29 +177,25 @@ def handle_dele(request, directory):
     except:
         return BAD_REQUEST
 
-    command = 'rm -f' + name
+    command = 'rm -rf ' + name
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response 
 
-def handle_cdup(request, user, directory):
-    command = 'cd ..'
-    response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    return response 
+def handle_cdup(user, directory):
+    return handle_cwd('cd ..', user, directory)
 
-def handle_quit(request, user):
+def handle_quit(user):
     user.quit()
-    response = "400"
+    response = ""
     return response 
 
 
 def main():
-    host = "localhost"
-    port = 8021 
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
+    server_socket.bind((host, ctrl_port))
     server_socket.listen(1)
-    print(f"Server is listening on http://{host}:{port}")
+    print(f"Server is listening on http://{host}:{ctrl_port}")
 
     add_fake_users()
     user = User()
@@ -217,7 +214,7 @@ def main():
             if any(x in request.upper() for x in ['LIST', 'LS']):
                 response = handle_list(request, current_dir)
             elif 'RETR' in request.upper():
-                response = handle_retr(request, client_host)
+                response = handle_retr(request, client_host, current_dir)
             elif 'STOR' in request.upper():
                 response = handle_stor(request, client_host)
             elif any(x in request.upper() for x in ['MKD', 'MKDIR']):
@@ -225,15 +222,15 @@ def main():
             elif any(x in request.upper() for x in ['RMD', 'RMDIR']):
                 response = handle_rmd(request, current_dir)
             elif 'PWD' in request.upper():
-                response = handle_pwd(request, current_dir)
+                response = handle_pwd(current_dir)
+            elif 'CDUP' in request.upper():
+                response = handle_cdup(user, current_dir)
             elif any(x in request.upper() for x in ['CWD', 'CD']):
                 response = handle_cwd(request, user, current_dir)
-            elif any(x in request.upper()for x in ['DELE', 'DEL']):
+            elif any(x in request.upper()for x in ['DELE', 'RM']):
                 response = handle_dele(request, current_dir)
-            elif 'CDUP' in request.upper():
-                response = handle_cdup(request, user, current_dir)
-            elif any(x in request.upper() for x in ['QUIT', 'Q']):
-                response = handle_quit(request)
+            elif any(x in request.upper() for x in ['QUIT']):
+                response = handle_quit(user)
             else:
                 response = BAD_REQUEST
         else:
@@ -249,13 +246,15 @@ if __name__ == "__main__":
         
 #USER string
 #PASS string
-#LIST null | string
-#RETR string
-#STOR string
 #MKD string
 #RMD 
 #PWD
 #CWD string
 #DELE string
 #CDUP 
+
+#LIST null | string
+#RETR string
+#STOR string
 #QUIT
+# priority
