@@ -2,18 +2,17 @@ import socket
 import subprocess
 import shlex
 import os
-from time import sleep
-#commands
 
-ORDINARY = 2
 ADMIN = 1
+ORDINARY = 2
 BAD_REQUEST = '400 Bad Request'
 DEFAULT_DIR = f'/home/{os.getlogin()}/ftp'
-LOG = f'/home/{os.getlogin()}/ftp/report.log'
+LOG_DIR = f'/home/{os.getlogin()}/ftp/report.log'
+HELP_DIR = f'/home/{os.getlogin()}/ftp/help.hlp'
 
-host = "localhost"
-ctrl_port = 8021 
-data_port = 8020 
+DATA_PORT = 8020 
+CTRL_PORT = 8021 
+host = 'localhost'
 
 users = []
 online_users = []
@@ -34,6 +33,9 @@ class User:
     def set_current_dir(self, directory):
         self.current_dir = directory
 
+    def set_authorized(self, authorized):
+        self.authorized = authorized
+
     def get_username(self):
         return self.username
 
@@ -46,6 +48,9 @@ class User:
     def get_privilage(self):
         return self.privilage
 
+    def get_authorized(self):
+        return self.authorized
+
     def add_user(self, username, password, privilage):
         self.set_username(username)
         self.set_password(password)
@@ -57,21 +62,22 @@ class User:
             if self.username == user.username and self.password == user.password:
                 self.set_privilage(user.privilage)
                 online_users.append(self)
-                self.authorized = True
+                self.set_authorized(True)
                 break
 
     def quit(self):
         online_users.remove(self)
     
     def __str__(self):
-        return f'username: {self.username}\npassword: {self.password}\nprivilage: {self.privilage}\nautorization: {self.authorized}\ndir: {self.current_dir}'
+        return f'username: {self.username}\npassword: {self.password}\nprivilage: {self.privilage}\nauthorization: {self.authorized}\ndir: {self.current_dir}'
 
 
 def add_fake_users():
     user = User()
-    user.add_user('mohammad', '1234', ADMIN)
+    user.add_user('m', '1', ORDINARY)
     user = User()
     user.add_user('p', '1', ADMIN) 
+    user = User()
 
 def handle_user(request, user):
     request_parts = request.strip().split()
@@ -81,7 +87,8 @@ def handle_user(request, user):
         return BAD_REQUEST
 
     user.set_username(username)
-    response = 'Username Set'
+    user.set_authorized(False)
+    response = '200 Username Set'
     return response
 
 def handle_pass(request, user):
@@ -93,10 +100,10 @@ def handle_pass(request, user):
 
     user.set_password(password)
     user.authenticate()
-    if user.authorized:
-        response = 'Login Successfull'
+    if user.get_authorized():
+        response = '200 Login Successfull'
     else:
-        response = 'Login Failed'
+        response = '400 Login Failed'
     return response
 
 def handle_list(request, directory):
@@ -117,7 +124,7 @@ def handle_retr(request, client_host, directory):
     file_name = directory + '/' + request_parts[1] 
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((client_host, data_port))
+    s.connect((client_host, DATA_PORT))
 
     #TODO try exception
     with open(file_name, 'rb') as f:
@@ -139,9 +146,9 @@ def handle_mkd(request, directory):
     except:
         return BAD_REQUEST
 
-    command = 'mkdir ' + path 
+    command = 'mkdir -p ' + path 
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'Directory cheeze "{path}" created' if not response else response
+    response = f'200 Directory "{path}" created' if not response else '400 '+response
     return response 
 
 def handle_rmd(request, directory):  
@@ -153,7 +160,7 @@ def handle_rmd(request, directory):
 
     command = 'rmdir ' + path
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'Directory cheeze "{path}" removed' if not response else response
+    response = f'200 Directory "{path}" removed' if not response else '400 '+response
     return response 
 
 def handle_pwd(directory):
@@ -179,9 +186,9 @@ def handle_cwd(request, user, directory):
             response = BAD_REQUEST
         else:
             user.set_current_dir(path)
-            response = f'You are in {path}' 
+            response = f'200 You are in {path}' 
     except:
-        response = 'Directory Not Found'
+        response = '400 Directory Not Found'
 
     return response 
 
@@ -194,6 +201,7 @@ def handle_dele(request, directory):
 
     command = 'rm -rf ' + name
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
+    response = f'200 Directory/File "{path}" deleted' if not response else '400 '+response
     return response 
 
 def handle_cdup(user, directory):
@@ -201,43 +209,52 @@ def handle_cdup(user, directory):
 
 def handle_quit(user):
     user.quit()
-    response = "Goodnight!"
+    response = '200 Goodnight!'
     return response 
 
 def handle_report(privilage):
     if privilage == ADMIN:
-        command = 'cat ' + LOG 
+        command = 'cat ' + LOG_DIR
         response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
     else:
-        response = "Access Denied"
+        response = '400 Access Denied'
 
     return response
+
+def handle_help(client_socket):
+    with open(HELP_DIR, 'r') as f:
+        response = f.read()
+    client_socket.sendall(response.encode())
 
 
 def main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, ctrl_port))
+    server_socket.bind((host, CTRL_PORT))
     server_socket.listen(1)
-    print(f"Server is listening on http://{host}:{ctrl_port}")
+    print(f'Server is listening on ftp://{host}:{CTRL_PORT}')
 
     add_fake_users()
     user = User()
+    show_help = False
     while True:
         client_socket, client_address = server_socket.accept()
         client_host = socket.gethostbyaddr(client_address[0])[0]
+        if not show_help:
+            handle_help(client_socket)
+            show_help = True
         request = client_socket.recv(1024).decode()
 
         if 'USER' in request.upper():
-            with open(LOG, 'a') as f:
+            with open(LOG_DIR, 'a') as f:
                 f.write(f'User: Unknown\nRequest: {request}\n')
             response = handle_user(request, user)
         elif 'PASS' in request.upper():
-            with open(LOG, 'a') as f:
+            with open(LOG_DIR, 'a') as f:
                 f.write(f'User: Unknown\nRequest: {request}\n')
             response = handle_pass(request, user)
 
-        elif user.authorized:
-            with open(LOG, 'a') as f:
+        elif user.get_authorized():
+            with open(LOG_DIR, 'a') as f:
                 f.write(f'User: {user.get_username()}\nRequest: {request}\n')
 
             current_dir = user.get_current_dir()
@@ -266,9 +283,9 @@ def main():
             else:
                 response = BAD_REQUEST
         else:
-            response = "Login First!"
+            response = '400 Login First!'
 
-        with open(LOG, 'a') as f:
+        with open(LOG_DIR, 'a') as f:
             f.write(f'Response: {response}\n')
             f.write('--------------------------------\n')
 
@@ -276,21 +293,11 @@ def main():
         client_socket.close()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
         
-        
-#USER string
-#PASS string
-#MKD string
-#RMD 
-#PWD
-#CWD string
-#DELE string
-#CDUP 
-#LIST null | string
-#QUIT
 
+#TODO        
 #RETR string
 #STOR string
-# priority
+#Priority
