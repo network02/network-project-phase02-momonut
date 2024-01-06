@@ -1,7 +1,6 @@
 import socket
 import subprocess
 import shlex
-from time import sleep
 
 server = 'localhost'
 DATA_PORT = 8020 
@@ -23,11 +22,6 @@ def send(request):
     return response
     
 def main():
-    data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    data_socket.settimeout(2)
-    control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    control_socket.settimeout(2)
-
     request = 'HELP'
     response = send(request)
     print(response)
@@ -38,8 +32,9 @@ def main():
             print(response)
             break
 
-        if response == 'Ready':
-            sleep(2)
+        if response == 'Ready Retr':
+            data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            data_socket.settimeout(2)
             data_socket.connect((server, DATA_PORT))
 
             file_name = './downloads/' + request.split()[1].split('/')[-1]
@@ -59,7 +54,8 @@ def main():
 
                 data_socket.close()
 
-                sleep(2)
+                control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                control_socket.settimeout(2)
                 control_socket.connect((server, CTRL_PORT))
                 response = control_socket.recv(1024).decode()
                 control_socket.close()
@@ -68,9 +64,31 @@ def main():
                 response = '400 Connection loss'
 
 
-        elif 'STOR' in request.upper():
-            pass
-        
+        elif response == 'Ready Stor':
+            data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            data_socket.settimeout(2)
+            data_socket.connect((server, DATA_PORT))
+
+            file_name = request.split()[1]
+            try:
+                with open(file_name, 'r') as f:
+                    data = f.read(BUFFER_SIZE)
+                    while data:
+                        data_socket.sendall(data.encode())
+                        data = f.read(BUFFER_SIZE)
+
+                data_socket.close()
+
+                control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                control_socket.settimeout(2)
+                control_socket.connect((server, CTRL_PORT))
+                response = control_socket.recv(1024).decode()
+                control_socket.close()
+
+            except:
+                response = '400 Connection loss'
+
+            
         elif response == '200 Goodnight!':
             print(response)
             break

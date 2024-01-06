@@ -129,7 +129,7 @@ def handle_retr(request, client_control, data_socket, directory):
         return response
 
     try:
-        ready = 'Ready'
+        ready = 'Ready Retr'
         client_control.sendall(ready.encode())
         client_control.close()
 
@@ -152,7 +152,6 @@ def handle_retr(request, client_control, data_socket, directory):
     return response
 
 def handle_stor(request, client_control, data_socket, directory):
-
     request_parts = request.strip().split()
     try:
         file_name = directory + '/' + request_parts[2] 
@@ -161,7 +160,7 @@ def handle_stor(request, client_control, data_socket, directory):
         return response
 
     try:
-        ready = 'Ready2'
+        ready = 'Ready Stor'
         client_control.sendall(ready.encode())
         client_control.close()
 
@@ -180,13 +179,6 @@ def handle_stor(request, client_control, data_socket, directory):
                 if not data:
                     break
                 f.write(data)
-
-        client_data.close()
-        with open(file_name, 'w') as f:
-            data = f.read(BUFFER_SIZE)
-            while data:
-                client_data.sendall(data.encode())
-                data = f.read(BUFFER_SIZE)
 
         client_data.close()
         response = '200 File Sent'
