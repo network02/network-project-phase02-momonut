@@ -2,15 +2,15 @@ import socket
 import subprocess
 import shlex
 
-host = ''
+host = 'localhost'
 server = 'localhost'
-CTRL_PORT = 8021
 DATA_PORT = 8020 
+CTRL_PORT = 8021
 
 def send(request):
     try:
         client_ctrl = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_ctrl.settimeout(1)
+        client_ctrl.settimeout(2)
         client_ctrl.connect((server, CTRL_PORT))
         client_ctrl.sendall(request.encode())
         response = client_ctrl.recv(1024).decode()

@@ -122,18 +122,29 @@ def handle_list(request, directory):
 def handle_retr(request, client_host, directory):
     request_parts = request.strip().split()
     file_name = directory + '/' + request_parts[1] 
+    try:
+        print('connect')
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print('connect')
+        s.settimeout(40)
+        print(client_host, DATA_PORT)
+        s.connect((client_host, DATA_PORT))
+        print('connect')
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((client_host, DATA_PORT))
-
-    #TODO try exception
-    with open(file_name, 'rb') as f:
-        while data:
+        with open(file_name, 'rb') as f:
             data = f.read(1024)
-            s.send(data.encode())
+            print(f'data: {data}')
+            while data:
+                data = f.read(1024)
+                s.send(data.encode())
 
-    s.close()
-    response = 'File Sent'
+        s.close()
+        response = '200 File Sent'
+
+    except:
+        response = '400 Connection loss'
+    print(response)
+
     return response
 
 def handle_stor(request, client, directory):
@@ -264,7 +275,12 @@ def main():
             if any(x in request.upper() for x in ['LIST', 'LS']):
                 response = handle_list(request, current_dir)
             elif 'RETR' in request.upper():
+                c = 'hh'
+                print(c)
+                client_socket.sendall(c.encode())
+                client_socket.close()
                 response = handle_retr(request, client_host, current_dir)
+                continue
             elif 'STOR' in request.upper():
                 response = handle_stor(request, client_host)
             elif any(x in request.upper() for x in ['MKD', 'MKDIR']):
