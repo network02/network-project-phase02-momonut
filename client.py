@@ -1,8 +1,8 @@
 import socket
 import subprocess
 import shlex
+from time import sleep
 
-host = 'localhost'
 server = 'localhost'
 DATA_PORT = 8020 
 CTRL_PORT = 8021
@@ -32,29 +32,32 @@ def main():
             print(response)
             break
 
-        if 'RETR' in request.upper():
+        if response == 'Ready':
             client_data = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_data.bind((host, DATA_PORT))
-            client_data.listen(1)
-            print(f'listening on ftp://{host}:{DATA_PORT}')
-            server_socket, server_address = client_data.accept()
-            print(f'port {DATA_PORT} opened')
+            client_data.settimeout(2)
+            sleep(2)
+            client_data.connect((server, DATA_PORT))
 
-            file_name = request.strip().split()[1].split('/')[-1]
+            file_name = './downloads/' + request.split()[1].split('/')[-1]
             command = 'mkdir -p ./downloads/' 
-            response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
+            subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
             command = 'rm -rf ' + file_name
-            response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
+            subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
             command = 'touch ' + file_name
-            response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
-            with open(f'./downloads/{file_name}', 'ab') as f:
-                while True:
-                    data = server_socket.recv(1024).decode()
-                    if not data:
-                        break
-                    f.write(data)
+            subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
+            try:
+                with open(file_name, 'a') as f:
+                    while True:
+                        data = client_data.recv(1024).decode()
+                        if not data:
+                            break
+                        f.write(data)
 
-            server_socket.close()
+                client_data.close()
+                response = '200 File Sent' 
+
+            except:
+                response = '400 Connection loss'
 
         elif 'STOR' in request.upper():
             pass

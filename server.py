@@ -119,35 +119,29 @@ def handle_list(request, directory):
         response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response
 
-def handle_retr(request, client_host, directory):
+def handle_retr(request, data_socket, directory):
     request_parts = request.strip().split()
     file_name = directory + '/' + request_parts[1] 
     try:
-        print('connect')
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print('connect')
-        s.settimeout(40)
-        print(client_host, DATA_PORT)
-        s.connect((client_host, DATA_PORT))
-        print('connect')
+        print(f'listening on ftp://{host}:{DATA_PORT}')
+        server_socket, server_address = data_socket.accept()
+        print(f'port {DATA_PORT} opened')
 
-        with open(file_name, 'rb') as f:
+        with open(file_name, 'r') as f:
             data = f.read(1024)
-            print(f'data: {data}')
             while data:
+                data_socket.send(data.encode())
                 data = f.read(1024)
-                s.send(data.encode())
 
-        s.close()
+        data_socket.close()
         response = '200 File Sent'
 
     except:
         response = '400 Connection loss'
-    print(response)
 
     return response
 
-def handle_stor(request, client, directory):
+def handle_stor(request, data_socket, directory):
     pass
 
 def handle_mkd(request, directory):
@@ -242,6 +236,9 @@ def main():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((host, CTRL_PORT))
     server_socket.listen(1)
+    data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    data_socket.bind((host, DATA_PORT))
+    data_socket.listen(1)
     print(f'Server is listening on ftp://{host}:{CTRL_PORT}')
 
     add_fake_users()
@@ -275,14 +272,23 @@ def main():
             if any(x in request.upper() for x in ['LIST', 'LS']):
                 response = handle_list(request, current_dir)
             elif 'RETR' in request.upper():
-                c = 'hh'
-                print(c)
-                client_socket.sendall(c.encode())
+                ready = 'Ready'
+                client_socket.sendall(ready.encode())
                 client_socket.close()
-                response = handle_retr(request, client_host, current_dir)
+                response = handle_retr(request, data_socket, current_dir)
+                with open(LOG_DIR, 'a') as f:
+                    f.write(f'Response: {response}\n')
+                    f.write('--------------------------------\n')
                 continue
             elif 'STOR' in request.upper():
-                response = handle_stor(request, client_host)
+                ready = 'Ready'
+                client_socket.sendall(ready.encode())
+                client_socket.close()
+                response = handle_stor(request, data_socket, current_dir)
+                with open(LOG_DIR, 'a') as f:
+                    f.write(f'Response: {response}\n')
+                    f.write('--------------------------------\n')
+                continue
             elif any(x in request.upper() for x in ['MKD', 'MKDIR']):
                 response = handle_mkd(request, current_dir)
             elif any(x in request.upper() for x in ['RMD', 'RMDIR']):
