@@ -54,7 +54,7 @@ def main():
                         f.write(data)
 
                 client_data.close()
-                response = '200 File Sent' 
+                response = '200 File Received' 
 
             except:
                 response = '400 Connection loss'

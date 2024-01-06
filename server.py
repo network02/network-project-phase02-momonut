@@ -130,7 +130,7 @@ def handle_retr(request, data_socket, directory):
         with open(file_name, 'r') as f:
             data = f.read(1024)
             while data:
-                data_socket.send(data.encode())
+                server_socket.sendall(data.encode())
                 data = f.read(1024)
 
         data_socket.close()
