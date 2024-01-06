@@ -6,15 +6,16 @@ from time import sleep
 server = 'localhost'
 DATA_PORT = 8020 
 CTRL_PORT = 8021
+BUFFER_SIZE = 1024
 
 def send(request):
     try:
-        client_ctrl = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_ctrl.settimeout(2)
-        client_ctrl.connect((server, CTRL_PORT))
-        client_ctrl.sendall(request.encode())
-        response = client_ctrl.recv(1024).decode()
-        client_ctrl.close()
+        control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        control_socket.settimeout(2)
+        control_socket.connect((server, CTRL_PORT))
+        control_socket.sendall(request.encode())
+        response = control_socket.recv(1024).decode()
+        control_socket.close()
 
     except:
         response = 'server is offline!!'
@@ -22,7 +23,12 @@ def send(request):
     return response
     
 def main():
-    request = '!HELLO!'
+    data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    data_socket.settimeout(2)
+    control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    control_socket.settimeout(2)
+
+    request = 'HELP'
     response = send(request)
     print(response)
     while True:
@@ -33,10 +39,8 @@ def main():
             break
 
         if response == 'Ready':
-            client_data = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_data.settimeout(2)
             sleep(2)
-            client_data.connect((server, DATA_PORT))
+            data_socket.connect((server, DATA_PORT))
 
             file_name = './downloads/' + request.split()[1].split('/')[-1]
             command = 'mkdir -p ./downloads/' 
@@ -48,16 +52,21 @@ def main():
             try:
                 with open(file_name, 'a') as f:
                     while True:
-                        data = client_data.recv(1024).decode()
+                        data = data_socket.recv(BUFFER_SIZE).decode()
                         if not data:
                             break
                         f.write(data)
 
-                client_data.close()
-                response = '200 File Received' 
+                data_socket.close()
+
+                sleep(2)
+                control_socket.connect((server, CTRL_PORT))
+                response = control_socket.recv(1024).decode()
+                control_socket.close()
 
             except:
                 response = '400 Connection loss'
+
 
         elif 'STOR' in request.upper():
             pass

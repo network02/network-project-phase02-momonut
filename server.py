@@ -9,6 +9,7 @@ BAD_REQUEST = '400 Bad Request'
 DEFAULT_DIR = f'/home/{os.getlogin()}/ftp'
 LOG_DIR = f'/home/{os.getlogin()}/ftp/report.log'
 HELP_DIR = f'/home/{os.getlogin()}/ftp/help.hlp'
+BUFFER_SIZE = 1024
 
 DATA_PORT = 8020 
 CTRL_PORT = 8021 
@@ -119,30 +120,81 @@ def handle_list(request, directory):
         response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response
 
-def handle_retr(request, data_socket, directory):
+def handle_retr(request, client_control, data_socket, directory):
     request_parts = request.strip().split()
-    file_name = directory + '/' + request_parts[1] 
     try:
+        file_name = directory + '/' + request_parts[1] 
+    except:
+        response = BAD_REQUEST
+        return response
+
+    try:
+        ready = 'Ready'
+        client_control.sendall(ready.encode())
+        client_control.close()
+
         print(f'listening on ftp://{host}:{DATA_PORT}')
-        server_socket, server_address = data_socket.accept()
+        client_data, client_address = data_socket.accept()
         print(f'port {DATA_PORT} opened')
 
         with open(file_name, 'r') as f:
-            data = f.read(1024)
+            data = f.read(BUFFER_SIZE)
             while data:
-                server_socket.sendall(data.encode())
-                data = f.read(1024)
+                client_data.sendall(data.encode())
+                data = f.read(BUFFER_SIZE)
 
-        data_socket.close()
-        response = '200 File Sent'
+        client_data.close()
+        response = '200 File Received'
 
     except:
         response = '400 Connection loss'
 
     return response
 
-def handle_stor(request, data_socket, directory):
-    pass
+def handle_stor(request, client_control, data_socket, directory):
+
+    request_parts = request.strip().split()
+    try:
+        file_name = directory + '/' + request_parts[2] 
+    except:
+        response = BAD_REQUEST
+        return response
+
+    try:
+        ready = 'Ready2'
+        client_control.sendall(ready.encode())
+        client_control.close()
+
+
+        print(f'listening on ftp://{host}:{DATA_PORT}')
+        client_data, client_address = data_socket.accept()
+        print(f'port {DATA_PORT} opened')
+
+        command = 'rm -rf ' + file_name
+        subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
+        command = 'touch ' + file_name
+        subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
+        with open(file_name, 'a') as f:
+            while True:
+                data = client_data.recv(BUFFER_SIZE).decode()
+                if not data:
+                    break
+                f.write(data)
+
+        client_data.close()
+        with open(file_name, 'w') as f:
+            data = f.read(BUFFER_SIZE)
+            while data:
+                client_data.sendall(data.encode())
+                data = f.read(BUFFER_SIZE)
+
+        client_data.close()
+        response = '200 File Sent'
+
+    except:
+        response = '400 Connection loss'
+
+    return response
 
 def handle_mkd(request, directory):
     request_parts = request.strip().split()
@@ -226,39 +278,36 @@ def handle_report(privilage):
 
     return response
 
-def handle_help(client_socket):
+def handle_help():
     with open(HELP_DIR, 'r') as f:
         response = f.read()
-    client_socket.sendall(response.encode())
+    return response
 
 
 def main():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, CTRL_PORT))
-    server_socket.listen(1)
+    control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    control_socket.bind((host, CTRL_PORT))
+    control_socket.listen(1)
     data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     data_socket.bind((host, DATA_PORT))
     data_socket.listen(1)
-    print(f'Server is listening on ftp://{host}:{CTRL_PORT}')
 
+    print(f'Server is listening on ftp://{host}:{CTRL_PORT}')
     add_fake_users()
     user = User()
-    show_help = False
     while True:
-        client_socket, client_address = server_socket.accept()
+        client_control, client_address = control_socket.accept()
         client_host = socket.gethostbyaddr(client_address[0])[0]
-        request = client_socket.recv(1024).decode()
-        if not show_help:
-            handle_help(client_socket)
-            show_help = True
+        request = client_control.recv(1024).decode()
         
-        if '!HELLO!' in request.upper():
-            client_socket.close()
-            continue 
+        if 'HELP' in request.upper():
+            response = handle_help()
+
         elif 'USER' in request.upper():
             with open(LOG_DIR, 'a') as f:
                 f.write(f'User: Unknown\nRequest: {request}\n')
             response = handle_user(request, user)
+
         elif 'PASS' in request.upper():
             with open(LOG_DIR, 'a') as f:
                 f.write(f'User: Unknown\nRequest: {request}\n')
@@ -271,42 +320,42 @@ def main():
             current_dir = user.get_current_dir()
             if any(x in request.upper() for x in ['LIST', 'LS']):
                 response = handle_list(request, current_dir)
+
             elif 'RETR' in request.upper():
-                ready = 'Ready'
-                client_socket.sendall(ready.encode())
-                client_socket.close()
-                response = handle_retr(request, data_socket, current_dir)
-                with open(LOG_DIR, 'a') as f:
-                    f.write(f'Response: {response}\n')
-                    f.write('--------------------------------\n')
-                continue
+                response = handle_retr(request, client_control, data_socket, current_dir)
+                client_control, client_address = control_socket.accept()
+
             elif 'STOR' in request.upper():
-                ready = 'Ready'
-                client_socket.sendall(ready.encode())
-                client_socket.close()
-                response = handle_stor(request, data_socket, current_dir)
-                with open(LOG_DIR, 'a') as f:
-                    f.write(f'Response: {response}\n')
-                    f.write('--------------------------------\n')
-                continue
+                response = handle_stor(request, client_control, data_socket, current_dir)
+                client_control, client_address = control_socket.accept()
+
             elif any(x in request.upper() for x in ['MKD', 'MKDIR']):
                 response = handle_mkd(request, current_dir)
+
             elif any(x in request.upper() for x in ['RMD', 'RMDIR']):
                 response = handle_rmd(request, current_dir)
+
             elif 'PWD' in request.upper():
                 response = handle_pwd(current_dir)
+
             elif 'CDUP' in request.upper():
                 response = handle_cdup(user, current_dir)
+
             elif any(x in request.upper() for x in ['CWD', 'CD']):
                 response = handle_cwd(request, user, current_dir)
+
             elif any(x in request.upper()for x in ['DELE', 'RM']):
                 response = handle_dele(request, current_dir)
+
             elif any(x in request.upper() for x in ['QUIT']):
                 response = handle_quit(user)
+
             elif 'REPORT' in request.upper(): 
                 response = handle_report(user.get_privilage())
+
             else:
                 response = BAD_REQUEST
+
         else:
             response = '400 Login First!'
 
@@ -314,8 +363,8 @@ def main():
             f.write(f'Response: {response}\n')
             f.write('--------------------------------\n')
 
-        client_socket.sendall(response.encode())
-        client_socket.close()
+        client_control.sendall(response.encode())
+        client_control.close()
 
 
 if __name__ == '__main__':
