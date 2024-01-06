@@ -22,6 +22,9 @@ def send(request):
     return response
     
 def main():
+    request = '!HELLO!'
+    response = send(request)
+    print(response)
     while True:
         request = input().strip()
         response = send(request)
@@ -53,14 +56,12 @@ def main():
 
             server_socket.close()
 
-
         elif 'STOR' in request.upper():
             pass
         
         elif response == '200 Goodnight!':
             print(response)
             break
-
         
         print(response)
     

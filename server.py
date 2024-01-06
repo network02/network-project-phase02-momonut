@@ -239,12 +239,15 @@ def main():
     while True:
         client_socket, client_address = server_socket.accept()
         client_host = socket.gethostbyaddr(client_address[0])[0]
+        request = client_socket.recv(1024).decode()
         if not show_help:
             handle_help(client_socket)
             show_help = True
-        request = client_socket.recv(1024).decode()
-
-        if 'USER' in request.upper():
+        
+        if '!HELLO!' in request.upper():
+            client_socket.close()
+            continue 
+        elif 'USER' in request.upper():
             with open(LOG_DIR, 'a') as f:
                 f.write(f'User: Unknown\nRequest: {request}\n')
             response = handle_user(request, user)
