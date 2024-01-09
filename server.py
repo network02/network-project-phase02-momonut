@@ -2,6 +2,7 @@ import socket
 import subprocess
 import shlex
 import os
+import json
 
 ADMIN = 1
 ORDINARY = 2
@@ -9,11 +10,13 @@ BAD_REQUEST = '400 Bad Request'
 DEFAULT_DIR = f'/home/{os.getlogin()}/ftp'
 LOG_DIR = f'/home/{os.getlogin()}/ftp/report.log'
 HELP_DIR = f'/home/{os.getlogin()}/ftp/help.hlp'
+ACCESS_FILE = f'/home/{os.getlogin()}/ftp/access.json'
 BUFFER_SIZE = 1024
 
 DATA_PORT = 8020 
 CTRL_PORT = 8021 
 host = 'localhost'
+file_access_privilages = []
 
 users = []
 online_users = []
@@ -72,6 +75,37 @@ class User:
     def __str__(self):
         return f'username: {self.username}\npassword: {self.password}\nprivilage: {self.privilage}\nauthorization: {self.authorized}\ndir: {self.current_dir}'
 
+class File:
+    def __init__(self):
+        pass
+
+    def set_access_privilage(self, privilage):
+        self.privilage = privilage
+
+    def set_dir(self, dir):
+        self.dir = dir
+    
+    def get_access_privilage(self):
+        return self.privilage
+
+    def get_dir(self):
+        return self.dir
+    
+    def __str__(self):
+        return f'access privilage: {self.access_privilage}\ndirectory: {self.dir}\n'
+
+
+
+
+def load_access_file():
+    file_access_privilages = []
+    with open(ACCESS_FILE) as f:
+        for line in f:
+            file_access_privilages.append(json.loads(line))  
+
+def update_access_file():
+    with open(ACCESS_FILE) as f:
+        json.dump(file_access_privilages)
 
 def add_fake_users():
     user = User()
@@ -120,7 +154,7 @@ def handle_list(request, directory):
         response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response
 
-def handle_retr(request, client_control, data_socket, directory):
+def handle_retr(request, client_control, data_socket, directory, user_privilage):
     request_parts = request.strip().split()
     try:
         file_name = directory + '/' + request_parts[1] 
@@ -128,6 +162,18 @@ def handle_retr(request, client_control, data_socket, directory):
         response = BAD_REQUEST
         return response
 
+    found = False
+    for file in file_access_privilages:
+        if file.get_dir() == file_name:
+            found = True
+            if file.privilage > user_privilage:
+                response = "Sorry, This file is not accessible with your privilage!"
+                return response
+    if not found:
+        response = "Requested file not found!"
+        return response
+            
+        
     try:
         ready = 'Ready Retr'
         client_control.sendall(ready.encode())
@@ -151,7 +197,7 @@ def handle_retr(request, client_control, data_socket, directory):
 
     return response
 
-def handle_stor(request, client_control, data_socket, directory):
+def handle_stor(request, client_control, data_socket, directory, user_privilage):
     request_parts = request.strip().split()
     try:
         file_name = directory + '/' + request_parts[2] 
@@ -185,6 +231,10 @@ def handle_stor(request, client_control, data_socket, directory):
 
     except:
         response = '400 Connection loss'
+    
+    file = File(file_name, user_privilage)
+    file_access_privilages.append(file)
+    update_access_file()
 
     return response
 
@@ -241,16 +291,31 @@ def handle_cwd(request, user, directory):
 
     return response 
 
-def handle_dele(request, directory):
+def handle_dele(request, directory, user_privilage):
     request_parts = request.strip().split()
     try:
-        name = request_parts[1]
+        path = directory + '/' + request_parts[1] 
     except:
-        return BAD_REQUEST
+        response = BAD_REQUEST
+        return response
 
-    command = 'rm -rf ' + name
+    found = False
+    for file in file_access_privilages:
+        if file.get_dir() == path:
+            found = True
+            if file.privilage > user_privilage:
+                response = "400 Sorry, This file is not accessible with your privilage!"
+                return response
+    if not found:
+        response = "400 Requested file not found!"
+        return response
+
+    command = 'rm -rf ' + path
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'200 Directory/File "{path}" deleted' if not response else '400 '+response
+    response = f'200 Directory/File "{path}" deleted' if not response else '400 '+ response
+
+    
+
     return response 
 
 def handle_cdup(user, directory):
@@ -277,6 +342,7 @@ def handle_help():
 
 
 def main():
+    load_access_file()
     control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     control_socket.bind((host, CTRL_PORT))
     control_socket.listen(1)
@@ -314,11 +380,11 @@ def main():
                 response = handle_list(request, current_dir)
 
             elif 'RETR' in request.upper():
-                response = handle_retr(request, client_control, data_socket, current_dir)
+                response = handle_retr(request, client_control, data_socket, current_dir, user.get_privilage())
                 client_control, client_address = control_socket.accept()
 
             elif 'STOR' in request.upper():
-                response = handle_stor(request, client_control, data_socket, current_dir)
+                response = handle_stor(request, client_control, data_socket, current_dir, user.get_privilage())
                 client_control, client_address = control_socket.accept()
 
             elif any(x in request.upper() for x in ['MKD', 'MKDIR']):
@@ -337,7 +403,7 @@ def main():
                 response = handle_cwd(request, user, current_dir)
 
             elif any(x in request.upper()for x in ['DELE', 'RM']):
-                response = handle_dele(request, current_dir)
+                response = handle_dele(request, current_dir, user.get_privilage())
 
             elif any(x in request.upper() for x in ['QUIT']):
                 response = handle_quit(user)
