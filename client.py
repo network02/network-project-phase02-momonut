@@ -88,7 +88,13 @@ def main():
             except:
                 response = '400 Connection loss'
 
-            
+        elif response == 'Not Ready':
+                control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                control_socket.settimeout(2)
+                control_socket.connect((server, CTRL_PORT))
+                response = control_socket.recv(1024).decode()
+                control_socket.close()
+
         elif response == '200 Goodnight!':
             print(response)
             break

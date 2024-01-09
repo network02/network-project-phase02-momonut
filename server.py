@@ -5,16 +5,20 @@ import os
 
 ADMIN = 1
 ORDINARY = 2
-BAD_REQUEST = '400 Bad Request'
-DEFAULT_DIR = f'/home/{os.getlogin()}/ftp'
-LOG_DIR = f'/home/{os.getlogin()}/ftp/report.log'
-HELP_DIR = f'/home/{os.getlogin()}/ftp/help.hlp'
+BAD_REQUEST = '400 Bad Request\n'
 BUFFER_SIZE = 1024
+
+server_name = os.getlogin()
+DEFAULT_DIR = f'/home/{server_name}//ftp'
+LOG_DIR = f'/home/{server_name}/ftp/admin/report.log'
+HELP_DIR = f'/home/{server_name}/ftp/admin/help.hlp'
+PRIVATE_FILE_DIR = f'/home/{server_name}/ftp/admin/private_files.txt'
 
 DATA_PORT = 8020 
 CTRL_PORT = 8021 
 host = 'localhost'
 
+private_files = []
 users = []
 online_users = []
 class User:
@@ -68,6 +72,10 @@ class User:
 
     def quit(self):
         online_users.remove(self)
+        user.set_username('')
+        user.set_password('')
+        user.set_authorized = False
+        user.set_current_dir = DEFAULT_DIR
     
     def __str__(self):
         return f'username: {self.username}\npassword: {self.password}\nprivilage: {self.privilage}\nauthorization: {self.authorized}\ndir: {self.current_dir}'
@@ -80,6 +88,18 @@ def add_fake_users():
     user.add_user('p', '1', ADMIN) 
     user = User()
 
+
+def read_private_files():
+    with open(PRIVATE_FILE_DIR, 'r') as f:
+        for line in f:
+            private_files.append(line.strip())
+
+
+def is_private(path):
+    file_name = path.split('/')[-1]
+    return file_name in private_files
+
+
 def handle_user(request, user):
     request_parts = request.strip().split()
     try:
@@ -89,7 +109,7 @@ def handle_user(request, user):
 
     user.set_username(username)
     user.set_authorized(False)
-    response = '200 Username Set'
+    response = '200 Username Set\n'
     return response
 
 def handle_pass(request, user):
@@ -102,12 +122,12 @@ def handle_pass(request, user):
     user.set_password(password)
     user.authenticate()
     if user.get_authorized():
-        response = '200 Login Successfull'
+        response = '200 Login Successfull\n'
     else:
         response = '400 Login Failed'
     return response
 
-def handle_list(request, directory):
+def handle_list(request, directory, access):
     request_parts = request.strip().split()
     if len(request_parts) > 1: 
         path = request_parts[1]
@@ -116,11 +136,14 @@ def handle_list(request, directory):
     command = f'ls {path} -ltrh'
     response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     if 'total' not in response:
-        command = f'cat {path}'
-        response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
+        if is_private(path) and access != ADMIN:
+            response = 'Access Denied'
+        else:
+            command = f'cat {path}'
+            response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
     return response
 
-def handle_retr(request, client_control, data_socket, directory):
+def handle_retr(request, client_control, data_socket, directory, access):
     request_parts = request.strip().split()
     try:
         file_name = directory + '/' + request_parts[1] 
@@ -129,6 +152,13 @@ def handle_retr(request, client_control, data_socket, directory):
         return response
 
     try:
+        if is_private(file_name) and access != ADMIN:
+            response = 'Access Denied'
+            ready = 'Not Ready'
+            client_control.sendall(ready.encode())
+            client_control.close()
+            return response
+
         ready = 'Ready Retr'
         client_control.sendall(ready.encode())
         client_control.close()
@@ -151,7 +181,7 @@ def handle_retr(request, client_control, data_socket, directory):
 
     return response
 
-def handle_stor(request, client_control, data_socket, directory):
+def handle_stor(request, client_control, data_socket, directory, access):
     request_parts = request.strip().split()
     try:
         file_name = directory + '/' + request_parts[2] 
@@ -160,6 +190,13 @@ def handle_stor(request, client_control, data_socket, directory):
         return response
 
     try:
+        if is_private(file_name) and access != ADMIN:
+            response = 'Access Denied'
+            ready = 'Not Ready'
+            client_control.sendall(ready.encode())
+            client_control.close()
+            return response
+
         ready = 'Ready Stor'
         client_control.sendall(ready.encode())
         client_control.close()
@@ -188,28 +225,37 @@ def handle_stor(request, client_control, data_socket, directory):
 
     return response
 
-def handle_mkd(request, directory):
+
+def handle_mkd(request, directory, access):
     request_parts = request.strip().split()
     try:
         path = request_parts[1]
     except:
         return BAD_REQUEST
 
-    command = 'mkdir -p ' + path 
-    response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'200 Directory "{path}" created' if not response else '400 '+response
+    if is_private(path) and access != ADMIN:
+        response = 'Access Denied'
+    else:
+        command = 'mkdir -p ' + path 
+        response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
+        response = f'200 Directory "{path}" created' if not response else '400 '+response
+
     return response 
 
-def handle_rmd(request, directory):  
+def handle_rmd(request, directory, access):  
     request_parts = request.strip().split()
     try:
         path = request_parts[1]
     except:
         return BAD_REQUEST
 
-    command = 'rmdir ' + path
-    response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'200 Directory "{path}" removed' if not response else '400 '+response
+    if is_private(path) and access != ADMIN:
+        response = 'Access Denied'
+    else:
+        command = 'rmdir ' + path
+        response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
+        response = f'200 Directory "{path}" removed' if not response else '400 '+response
+
     return response 
 
 def handle_pwd(directory):
@@ -241,34 +287,42 @@ def handle_cwd(request, user, directory):
 
     return response 
 
-def handle_dele(request, directory):
+def handle_dele(request, directory, access):
     request_parts = request.strip().split()
     try:
         name = request_parts[1]
     except:
         return BAD_REQUEST
 
-    command = 'rm -rf ' + name
-    response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
-    response = f'200 Directory/File "{path}" deleted' if not response else '400 '+response
+    if is_private(name) and access != ADMIN:
+        response = 'Access Denied'
+    else:
+        command = 'rm -rf ' + name
+        response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, cwd=directory).stdout.decode()
+        response = f'200 Directory/File "{name}" deleted' if not response else '400 '+response
+
     return response 
+
 
 def handle_cdup(user, directory):
     return handle_cwd('cd ..', user, directory)
+
 
 def handle_quit(user):
     user.quit()
     response = '200 Goodnight!'
     return response 
 
-def handle_report(privilage):
-    if privilage == ADMIN:
+
+def handle_report(access):
+    if access == ADMIN:
         command = 'cat ' + LOG_DIR
         response = subprocess.run(shlex.split(command), stdout=subprocess.PIPE).stdout.decode()
     else:
         response = '400 Access Denied'
 
     return response
+
 
 def handle_help():
     with open(HELP_DIR, 'r') as f:
@@ -286,13 +340,14 @@ def main():
 
     print(f'Server is listening on ftp://{host}:{CTRL_PORT}')
     add_fake_users()
+    read_private_files();
     user = User()
     while True:
         client_control, client_address = control_socket.accept()
         client_host = socket.gethostbyaddr(client_address[0])[0]
         request = client_control.recv(1024).decode()
         
-        if 'HELP' in request.upper():
+        if request.upper() == 'HELP':
             response = handle_help()
 
         elif 'USER' in request.upper():
@@ -308,24 +363,25 @@ def main():
         elif user.get_authorized():
             with open(LOG_DIR, 'a') as f:
                 f.write(f'User: {user.get_username()}\nRequest: {request}\n')
+            access = user.get_privilage()
 
             current_dir = user.get_current_dir()
             if any(x in request.upper() for x in ['LIST', 'LS']):
-                response = handle_list(request, current_dir)
+                response = handle_list(request, current_dir, access)
 
             elif 'RETR' in request.upper():
-                response = handle_retr(request, client_control, data_socket, current_dir)
+                response = handle_retr(request, client_control, data_socket, current_dir, access)
                 client_control, client_address = control_socket.accept()
 
             elif 'STOR' in request.upper():
-                response = handle_stor(request, client_control, data_socket, current_dir)
+                response = handle_stor(request, client_control, data_socket, current_dir, access)
                 client_control, client_address = control_socket.accept()
 
             elif any(x in request.upper() for x in ['MKD', 'MKDIR']):
-                response = handle_mkd(request, current_dir)
+                response = handle_mkd(request, current_dir, access)
 
             elif any(x in request.upper() for x in ['RMD', 'RMDIR']):
-                response = handle_rmd(request, current_dir)
+                response = handle_rmd(request, current_dir, access)
 
             elif 'PWD' in request.upper():
                 response = handle_pwd(current_dir)
@@ -337,13 +393,13 @@ def main():
                 response = handle_cwd(request, user, current_dir)
 
             elif any(x in request.upper()for x in ['DELE', 'RM']):
-                response = handle_dele(request, current_dir)
+                response = handle_dele(request, current_dir, access)
 
             elif any(x in request.upper() for x in ['QUIT']):
                 response = handle_quit(user)
 
             elif 'REPORT' in request.upper(): 
-                response = handle_report(user.get_privilage())
+                response = handle_report(access)
 
             else:
                 response = BAD_REQUEST
@@ -352,7 +408,8 @@ def main():
             response = '400 Login First!'
 
         with open(LOG_DIR, 'a') as f:
-            f.write(f'Response: {response}\n')
+            if request.upper() == 'HELP':
+                f.write(f'Response: {response}\n')
             f.write('--------------------------------\n')
 
         client_control.sendall(response.encode())
@@ -364,6 +421,4 @@ if __name__ == '__main__':
         
 
 #TODO        
-#RETR string
-#STOR string
 #Priority
