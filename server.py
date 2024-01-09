@@ -12,15 +12,16 @@ server_name = os.getlogin()
 DEFAULT_DIR = f'/home/{server_name}//ftp'
 LOG_DIR = f'/home/{server_name}/ftp/admin/report.log'
 HELP_DIR = f'/home/{server_name}/ftp/admin/help.hlp'
-PRIVATE_FILE_DIR = f'/home/{server_name}/ftp/admin/private_files.txt'
+PRIVATE_FILES_DIR = f'/home/{server_name}/ftp/admin/private_files.txt'
 
 DATA_PORT = 8020 
 CTRL_PORT = 8021 
-host = 'localhost'
+HOST = 'localhost'
 
 private_files = []
 users = []
 online_users = []
+
 class User:
     def __init__(self):
         self.authorized = False
@@ -35,11 +36,11 @@ class User:
     def set_privilage(self, privilage):
         self.privilage = privilage
 
-    def set_current_dir(self, directory):
-        self.current_dir = directory
-
     def set_authorized(self, authorized):
         self.authorized = authorized
+
+    def set_current_dir(self, directory):
+        self.current_dir = directory
 
     def get_username(self):
         return self.username
@@ -47,14 +48,14 @@ class User:
     def get_password(self):
         return self.password
 
-    def get_current_dir(self):
-        return self.current_dir
-
     def get_privilage(self):
         return self.privilage
 
     def get_authorized(self):
         return self.authorized
+
+    def get_current_dir(self):
+        return self.current_dir
 
     def add_user(self, username, password, privilage):
         self.set_username(username)
@@ -90,7 +91,7 @@ def add_fake_users():
 
 
 def read_private_files():
-    with open(PRIVATE_FILE_DIR, 'r') as f:
+    with open(PRIVATE_FILES_DIR, 'r') as f:
         for line in f:
             private_files.append(line.strip())
 
@@ -163,7 +164,7 @@ def handle_retr(request, client_control, data_socket, directory, access):
         client_control.sendall(ready.encode())
         client_control.close()
 
-        print(f'listening on ftp://{host}:{DATA_PORT}')
+        print(f'listening on ftp://{HOST}:{DATA_PORT}')
         client_data, client_address = data_socket.accept()
         print(f'port {DATA_PORT} opened')
 
@@ -202,7 +203,7 @@ def handle_stor(request, client_control, data_socket, directory, access):
         client_control.close()
 
 
-        print(f'listening on ftp://{host}:{DATA_PORT}')
+        print(f'listening on ftp://{HOST}:{DATA_PORT}')
         client_data, client_address = data_socket.accept()
         print(f'port {DATA_PORT} opened')
 
@@ -332,13 +333,13 @@ def handle_help():
 
 def main():
     control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    control_socket.bind((host, CTRL_PORT))
+    control_socket.bind((HOST, CTRL_PORT))
     control_socket.listen(1)
     data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    data_socket.bind((host, DATA_PORT))
+    data_socket.bind((HOST, DATA_PORT))
     data_socket.listen(1)
 
-    print(f'Server is listening on ftp://{host}:{CTRL_PORT}')
+    print(f'Server is listening on ftp://{HOST}:{CTRL_PORT}')
     add_fake_users()
     read_private_files();
     user = User()
