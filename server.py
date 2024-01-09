@@ -73,10 +73,10 @@ class User:
 
     def quit(self):
         online_users.remove(self)
-        user.set_username('')
-        user.set_password('')
-        user.set_authorized = False
-        user.set_current_dir = DEFAULT_DIR
+        self.set_username('')
+        self.set_password('')
+        self.set_authorized = False
+        self.set_current_dir = DEFAULT_DIR
     
     def __str__(self):
         return f'username: {self.username}\npassword: {self.password}\nprivilage: {self.privilage}\nauthorization: {self.authorized}\ndir: {self.current_dir}'
